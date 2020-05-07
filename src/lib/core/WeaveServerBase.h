@@ -59,14 +59,36 @@ public:
 
     static WEAVE_ERROR SendStatusReport(ExchangeContext *ec, uint32_t statusProfileId, uint16_t statusCode, WEAVE_ERROR sysError, uint16_t sendFlags);
 
+    // Check if the session is marked as privileged to retrieve secret
+    // credential infomration.
+    bool IsSessionPrivileged(uint16_t keyId, uint64_t peerNodeId) const;
 protected:
     WeaveServerBase(void) { }
+
+    // Utility functions for managing registration by/notification to delegate provisioning
+    // servers about whether the current security session is privileged to
+    // access credential information.
+    void SetPrivilegedSession(uint16_t keyId, uint64_t peerNodeId);
+    void ClearPrivilegedSession(void);
+    static void HandleSessionEnd(uint16_t keyId, uint64_t peerNodeId, void *context);
+    WEAVE_ERROR RegisterSessionEndCallbackWithFabricState(void);
 
     bool EnforceAccessControl(ExchangeContext *ec, uint32_t msgProfileId, uint8_t msgType,
             const WeaveMessageInfo *msgInfo, WeaveServerDelegateBase *delegate);
 
+    // Indicates the session that is privileged to
+    // retrieve secret credential information.
+    struct CredentialRetrievalPrivilegedSession
+    {
+        uint64_t PeerNodeId;
+        uint16_t SessionKeyId;
+    };
+    CredentialRetrievalPrivilegedSession mPrivilegedSession;
+
+    nl::Weave::WeaveFabricState::SessionEndCbCtxt mSessionEndCbCtxt;
 private:
     WeaveServerBase(const WeaveServerBase&); // not defined
+
 };
 
 

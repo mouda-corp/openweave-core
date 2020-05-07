@@ -67,14 +67,22 @@ FabricProvisioningServer::FabricProvisioningServer()
  */
 WEAVE_ERROR FabricProvisioningServer::Init(WeaveExchangeManager *exchangeMgr)
 {
+    WEAVE_ERROR err = WEAVE_NO_ERROR;
+
     FabricState = exchangeMgr->FabricState;
     ExchangeMgr = exchangeMgr;
     mDelegate = NULL;
     mCurClientOp = NULL;
+    memset(&mPrivilegedSession, 0, sizeof(mPrivilegedSession));
 
     // Register to receive unsolicited Service Provisioning messages from the exchange manager.
-    WEAVE_ERROR err =
+    err =
         ExchangeMgr->RegisterUnsolicitedMessageHandler(kWeaveProfile_FabricProvisioning, HandleClientRequest, this);
+    SuccessOrExit(err);
+
+    err = RegisterSessionEndCallbackWithFabricState();
+
+exit:
 
     return err;
 }
@@ -210,6 +218,9 @@ void FabricProvisioningServer::HandleClientRequest(ExchangeContext *ec, const IP
             server->FabricState->ClearFabricState();
         SuccessOrExit(err);
 
+        // Authorize the current session for privileged access to secret credential information
+        server->SetPrivilegedSession(msgInfo->KeyId, msgInfo->SourceNodeId);
+
         break;
 
     case kMsgType_LeaveFabric:
@@ -310,6 +321,8 @@ exit:
 void FabricProvisioningDelegate::EnforceAccessControl(ExchangeContext *ec, uint32_t msgProfileId, uint8_t msgType,
         const WeaveMessageInfo *msgInfo, AccessControlResult& result)
 {
+    FabricProvisioningServer *server = (FabricProvisioningServer *) ec->AppState;
+
     // If the result has not already been determined by a subclass...
     if (result == kAccessControlResult_NotDetermined)
     {
@@ -328,7 +341,9 @@ void FabricProvisioningDelegate::EnforceAccessControl(ExchangeContext *ec, uint3
 
         case kMsgType_LeaveFabric:
         case kMsgType_GetFabricConfig:
-            if (msgInfo->PeerAuthMode == kWeaveAuthMode_CASE_AccessToken)
+            if (msgInfo->PeerAuthMode == kWeaveAuthMode_CASE_AccessToken ||
+                (msgInfo->PeerAuthMode == kWeaveAuthMode_PASE_PairingCode && !IsPairedToAccount() &&
+                 server->IsSessionPrivileged(msgInfo->KeyId, msgInfo->SourceNodeId)))
             {
                 result = kAccessControlResult_Accepted;
             }

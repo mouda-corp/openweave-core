@@ -192,6 +192,55 @@ exit:
 }
 
 /**
+ * Indicates if the session with the given node id and the session key id is
+ * authorized to retrieve secret credential information.
+ *
+ * @return Returns 'true' if the given peer is privileged, else
+ * 'false'.
+ */
+
+bool WeaveServerBase::IsSessionPrivileged(uint16_t keyId, uint64_t peerNodeId) const
+{
+    return (peerNodeId == mPrivilegedSession.PeerNodeId &&
+            keyId == mPrivilegedSession.SessionKeyId);
+}
+
+void WeaveServerBase::SetPrivilegedSession(uint16_t keyId, uint64_t peerNodeId)
+{
+    mPrivilegedSession.PeerNodeId = peerNodeId;
+    mPrivilegedSession.SessionKeyId = keyId;
+}
+
+void WeaveServerBase::ClearPrivilegedSession(void)
+{
+    memset(&mPrivilegedSession, 0, sizeof(mPrivilegedSession));
+}
+
+void WeaveServerBase::HandleSessionEnd(uint16_t keyId, uint64_t peerNodeId, void *context)
+{
+    WeaveServerBase *server = static_cast<WeaveServerBase *>(context);
+
+    // Clear the privileged session when notified of its removal by FabricState
+    if (server->IsSessionPrivileged(keyId, peerNodeId))
+    {
+        server->ClearPrivilegedSession();
+    }
+}
+
+WEAVE_ERROR WeaveServerBase::RegisterSessionEndCallbackWithFabricState(void)
+{
+    WEAVE_ERROR err = WEAVE_NO_ERROR;
+
+    mSessionEndCbCtxt.OnSessionRemoved = HandleSessionEnd;
+    mSessionEndCbCtxt.context = this;
+    mSessionEndCbCtxt.next = NULL;
+
+    err = FabricState->RegisterSessionEndCallback(&mSessionEndCbCtxt);
+
+    return err;
+}
+
+/**
  * Virtual method for determining message-level access control policy for incoming server request messages.
  *
  * This method is called by the Weave server infrastructure to determine whether an incoming request message
